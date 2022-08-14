@@ -16,7 +16,7 @@
 struct IGameComponent;
 extern struct IGameComponent XR_Component;
 
-void XR_Init(void);
+cc_bool XR_Init(void);
 cc_bool XR_IsActive(void);
 
 
