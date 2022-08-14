@@ -119,6 +119,9 @@ CC_API void Matrix_RotateX(struct Matrix* result, float angle);
 CC_API void Matrix_RotateY(struct Matrix* result, float angle);
 /* Returns a matrix representing a counter-clockwise rotation around Z axis. */
 CC_API void Matrix_RotateZ(struct Matrix* result, float angle);
+/* Returns a matrix representing a quaternion (XYZW). */
+CC_API void Matrix_Orientation(struct Matrix* result, const float *quat);
+
 /* Returns a matrix representing a translation to the given coordinates. */
 CC_API void Matrix_Translate(struct Matrix* result, float x, float y, float z);
 /* Returns a matrix representing a scaling by the given factors. */

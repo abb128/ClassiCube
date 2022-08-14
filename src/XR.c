@@ -470,32 +470,10 @@ void XR_WaitFrame(struct XRFrameContext *ctx) {
 
 struct Matrix ConvertOpenXRPoseToMatrix(XrPosef pose) {
     struct Matrix translation = Matrix_IdentityValue;
-    Matrix_Translate(&translation, pose.position.x, pose.position.y, pose.position.z);
+    Matrix_Translate(&translation, -pose.position.x, -pose.position.y, -pose.position.z);
 
-    float q0 = pose.orientation.x;
-    float q1 = pose.orientation.y;
-    float q2 = pose.orientation.z;
-    float q3 = pose.orientation.w;
-
-    struct Matrix rotation = {
-        2.0f * (q0 * q0 + q1 * q1) - 1.0f ,
-        2.0f * (q1 * q2 - q0 * q3)     ,
-        2.0f * (q1 * q3 + q0 * q2)     ,
-        0.0f,
-        
-        // Second row of the rotation matrix
-        2.0f * (q1 * q2 + q0 * q3)     ,
-        2.0f * (q0 * q0 + q2 * q2) - 1.0f ,
-        2.0f * (q2 * q3 - q0 * q1)     ,
-        0.0f,
-        
-        // Third row of the rotation matrix
-        2.0f * (q1 * q3 - q0 * q2)     ,
-        2.0f * (q2 * q3 + q0 * q1)     ,
-        2.0f * (q0 * q0 + q3 * q3) - 1.0f ,
-        0.0f,
-    };
-
+    struct Matrix rotation;
+    Matrix_Orientation(&rotation, (float *)&pose.orientation);
 
     struct Matrix result = Matrix_IdentityValue;
     Matrix_Mul(&result, &translation, &rotation);
