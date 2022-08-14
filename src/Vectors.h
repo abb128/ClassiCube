@@ -130,6 +130,7 @@ CC_API void Matrix_Scale(struct Matrix* result, float x, float y, float z);
 CC_API void Matrix_Mul(struct Matrix* result, const struct Matrix* left, const struct Matrix* right);
 
 void Matrix_Orthographic(struct Matrix* result, float left, float right, float top, float bottom, float zNear, float zFar);
+void Matrix_Perspective(struct Matrix* result, float angleLeft, float angleRight, float angleUp, float angleDown, float nearZ, float farZ);
 void Matrix_PerspectiveFieldOfView(struct Matrix* result, float fovy, float aspect, float zNear, float zFar);
 void Matrix_LookRot(struct Matrix* result, Vec3 pos, Vec2 rot);
 

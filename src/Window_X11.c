@@ -1206,6 +1206,8 @@ void Window_DisableRawMouse(void) {
 #if defined CC_BUILD_GL && !defined CC_BUILD_EGL
 #include <GL/glx.h>
 static GLXContext ctx_handle;
+static GLXFBConfig fb_config;
+
 typedef int  (*FP_SWAPINTERVAL)(int interval);
 typedef Bool (*FP_QUERYRENDERER)(int attribute, unsigned int* value);
 static FP_SWAPINTERVAL swapIntervalMESA, swapIntervalSGI;
@@ -1249,7 +1251,7 @@ void GLContext_Create(void) {
 	}
 }
 
-void GLContext_Update(void) { }
+void GLContext_Update(void) { glXMakeCurrent(win_display, win_handle, ctx_handle); }
 cc_bool GLContext_TryRestore(void) { return true; }
 void GLContext_Free(void) {
 	if (!ctx_handle) return;
@@ -1325,7 +1327,8 @@ static XVisualInfo GLContext_SelectVisual(void) {
 		fbconfigs = glXChooseFBConfig(win_display, screen, attribs, &fbcount);
 		if (fbconfigs && fbcount) {
 			/* Use the first GLXFBConfig from the fbconfigs array (best match) */
-			visual = glXGetVisualFromFBConfig(win_display, *fbconfigs);
+			fb_config = *fbconfigs;
+			visual = glXGetVisualFromFBConfig(win_display, fb_config);
 			XFree(fbconfigs);
 		}
 	}
@@ -1345,5 +1348,27 @@ static XVisualInfo GLContext_SelectVisual(void) {
 	XFree(visual);
 	return info;
 }
+
+
+#ifdef CC_BUILD_OPENXR
+#define XR_USE_GRAPHICS_API_OPENGL
+#define XR_USE_PLATFORM_XLIB
+#include <openxr/openxr_platform.h>
+
+void* GLContext_GetXRGraphicsBinding(void){
+	XrGraphicsBindingOpenGLXlibKHR *xlibgl = Mem_TryAlloc(1, sizeof(XrGraphicsBindingOpenGLXlibKHR));
+	Mem_Set(xlibgl, 0, sizeof(XrGraphicsBindingOpenGLXlibKHR));
+
+	xlibgl->type = XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR;
+	xlibgl->xDisplay = win_display;
+	xlibgl->visualid = XVisualIDFromVisual(win_visual.visual);
+	xlibgl->glxFBConfig = fb_config;
+	xlibgl->glxDrawable = win_handle; //?
+	xlibgl->glxContext = ctx_handle;
+
+	return xlibgl;
+}
+#endif // CC_BUILD_OPENXR
+
 #endif
 #endif

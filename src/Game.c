@@ -380,7 +380,6 @@ static void Game_Load(void) {
 	Event_Register_(&WindowEvents.Closing,         NULL, Game_Free);
 	Event_Register_(&WindowEvents.InactiveChanged, NULL, HandleInactiveChanged);
 
-	Game_AddComponent(&XR_Component);
 	Game_AddComponent(&World_Component);
 	Game_AddComponent(&Textures_Component);
 	Game_AddComponent(&Input_Component);
@@ -412,6 +411,10 @@ static void Game_Load(void) {
 	Game_AddComponent(&PickedPosRenderer_Component);
 	Game_AddComponent(&Audio_Component);
 	Game_AddComponent(&AxisLinesRenderer_Component);
+
+#ifdef CC_BUILD_OPENXR
+	Game_AddComponent(&XR_Component);
+#endif
 
 	LoadPlugins();
 	for (comp = comps_head; comp; comp = comp->next) {
@@ -555,6 +558,17 @@ static void Game_RenderFrame(double delta) {
 	struct ScheduledTask entTask;
 	float t;
 
+
+#ifdef CC_BUILD_OPENXR
+	cc_bool use_openxr = XR_IsActive();
+
+	struct XRFrameContext *ctx;
+	if(use_openxr){
+		ctx = XR_InitFrameContext();
+		XR_WaitFrame(ctx);
+	}
+#endif
+
 	/* TODO: Should other tasks get called back too? */
 	/* Might not be such a good idea for the http_clearcache, */
 	/* don't really want all skins getting lost */
@@ -570,6 +584,7 @@ static void Game_RenderFrame(double delta) {
 	}
 
 	Gfx_BeginFrame();
+
 	Gfx_BindIb(Gfx_defaultIb);
 	Game.Time += delta;
 	Game_Vertices = 0;
@@ -593,6 +608,42 @@ static void Game_RenderFrame(double delta) {
 
 	/* TODO: Not calling Gfx_EndFrame doesn't work with Direct3D9 */
 	if (WindowInfo.Inactive) return;
+
+#ifdef CC_BUILD_OPENXR
+	if(use_openxr){
+		struct XRViewRender view = { 0 };
+		struct Matrix mult_result = { 0 };
+
+		XR_BeginFrame(ctx);
+
+		while(XR_RenderNextView(ctx, &view)) {
+			Gfx_BindFramebuffer(view.framebuffer);
+			Gfx_Clear();
+
+			//Gfx_LoadMatrix(MATRIX_PROJECTION, &Gfx.Projection);
+			Gfx_LoadMatrix(MATRIX_VIEW,       &Gfx.View);
+
+			
+			//Matrix_Mul(&mult_result, &view.pose, &Gfx.View);
+
+			Gfx_LoadMatrix(MATRIX_PROJECTION, &view.projection);
+			//Gfx_LoadMatrix(MATRIX_VIEW,       &mult_result);
+
+			if (!Gui_GetBlocksWorld()) {
+				Game_Render3D(delta, t);
+			} else {
+				RayTracer_SetInvalid(&Game_SelectedPos);
+			}
+		}
+		
+		Gfx_UnbindFramebuffer();
+
+		XR_SubmitFrame(ctx);
+
+		XR_FreeFrameContext(ctx);
+	}
+#endif
+
 	Gfx_Clear();
 
 	Gfx_LoadMatrix(MATRIX_PROJECTION, &Gfx.Projection);

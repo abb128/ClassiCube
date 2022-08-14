@@ -180,6 +180,67 @@ void Matrix_Orthographic(struct Matrix* result, float left, float right, float t
 }
 
 static double Tan_Simple(double x) { return Math_Sin(x) / Math_Cos(x); }
+void Matrix_Perspective(struct Matrix* result, float angleLeft, float angleRight, float angleUp, float angleDown, float nearZ, float farZ) {
+	float tanAngleLeft = Tan_Simple(angleLeft);
+	float tanAngleRight = Tan_Simple(angleRight);
+	float tanAngleUp = Tan_Simple(angleUp);
+	float tanAngleDown = Tan_Simple(angleDown);
+
+	    const float tanAngleWidth = tanAngleRight - tanAngleLeft;
+
+    // Set to tanAngleDown - tanAngleUp for a clip space with positive Y down (Vulkan).
+    // Set to tanAngleUp - tanAngleDown for a clip space with positive Y up (OpenGL / D3D / Metal).
+    const float tanAngleHeight = (tanAngleUp - tanAngleDown);
+
+    // Set to nearZ for a [-1,1] Z clip space (OpenGL / OpenGL ES).
+    // Set to zero for a [0,1] Z clip space (Vulkan / D3D / Metal).
+    const float offsetZ = nearZ;
+
+    if (farZ <= nearZ) {
+        // place the far plane at infinity
+        result->row1.X = 2.0f / tanAngleWidth;
+        result->row2.X = 0.0f;
+        result->row3.X = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+        result->row4.X = 0.0f;
+
+        result->row1.Y = 0.0f;
+        result->row2.Y = 2.0f / tanAngleHeight;
+        result->row3.Y = (tanAngleUp + tanAngleDown) / tanAngleHeight;
+        result->row4.Y = 0.0f;
+
+        result->row1.Z = 0.0f;
+        result->row2.Z = 0.0f;
+        result->row3.Z = -1.0f;
+        result->row4.Z = -(nearZ + offsetZ);
+
+        result->row1.W = 0.0f;
+        result->row2.W = 0.0f;
+        result->row3.W = -1.0f;
+        result->row4.W = 0.0f;
+    } else {
+        // normal projection
+        result->row1.X = 2.0f / tanAngleWidth;
+        result->row2.X = 0.0f;
+        result->row3.X = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+        result->row4.X = 0.0f;
+
+        result->row1.Y = 0.0f;
+        result->row2.Y = 2.0f / tanAngleHeight;
+        result->row3.Y = (tanAngleUp + tanAngleDown) / tanAngleHeight;
+        result->row4.Y = 0.0f;
+
+        result->row1.Z = 0.0f;
+        result->row2.Z = 0.0f;
+        result->row3.Z = -(farZ + offsetZ) / (farZ - nearZ);
+        result->row4.Z = -(farZ * (nearZ + offsetZ)) / (farZ - nearZ);
+
+        result->row1.W = 0.0f;
+        result->row2.W = 0.0f;
+        result->row3.W = -1.0f;
+        result->row4.W = 0.0f;
+    }
+}
+
 void Matrix_PerspectiveFieldOfView(struct Matrix* result, float fovy, float aspect, float zNear, float zFar) {
 	float c = zNear * (float)Tan_Simple(0.5f * fovy);
 

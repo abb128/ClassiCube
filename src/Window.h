@@ -190,6 +190,12 @@ void* GLContext_GetAddress(const char* function);
 /* Loads all OpenGL function pointers using GLContext_GetAddress in the given list */
 void GLContext_GetAll(const struct DynamicLibSym* syms, int count);
 
+#ifdef CC_BUILD_OPENXR
+/* Returns NULL or an address to a structure to be put in next for `XrSessionCreateInfo` */
+/* Must be freed with Mem_Free after no longer being used. */
+void* GLContext_GetXRGraphicsBinding(void);
+#endif // CC_BUILD_OPENXR
+
 /* Swaps the front and back buffer, displaying the back buffer on screen. */
 cc_bool GLContext_SwapBuffers(void);
 /* Sets whether synchronisation with the monitor is enabled. */

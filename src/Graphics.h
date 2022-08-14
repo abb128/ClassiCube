@@ -241,6 +241,21 @@ void Gfx_Begin2D(int width, int height);
 /* NOTE: This means restoring fog/depth test, restoring matrices, etc. */
 void Gfx_End2D(void);
 
+
+#ifdef CC_BUILD_GL_FB
+
+/* Creates a framebuffer with the given width, height, and color attachment. */
+/* This creates a depth buffer internally too. */
+GfxResourceID Gfx_GenFramebuffer(int width, int height, GfxResourceID color_attachment);
+
+void Gfx_BindFramebuffer(GfxResourceID fb);
+void Gfx_UnbindFramebuffer(void);
+
+void Gfx_FreeFramebuffer(GfxResourceID fb);
+
+#endif
+
+
 /* Sets appropriate alpha test/blending for given block draw type. */
 void Gfx_SetupAlphaState(cc_uint8 draw);
 /* Undoes changes to alpha test/blending state by Gfx_SetupAlphaState. */

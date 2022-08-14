@@ -175,6 +175,7 @@ Thus it is **NOT SAFE** to allocate a string on the stack. */
 #define CC_BUILD_X11
 #define CC_BUILD_CURL
 #define CC_BUILD_OPENAL
+#define CC_BUILD_OPENXR
 #if defined CC_BUILD_RPI
 #define CC_BUILD_GLMODERN
 #define CC_BUILD_GLES
@@ -250,6 +251,10 @@ Thus it is **NOT SAFE** to allocate a string on the stack. */
 #define CC_BUILD_MINFILES
 #undef  CC_BUILD_FREETYPE
 #endif
+#endif
+
+#if defined CC_BUILD_OPENXR
+#define CC_BUILD_GL_FB
 #endif
 
 #if defined CC_BUILD_D3D9 || defined CC_BUILD_D3D11

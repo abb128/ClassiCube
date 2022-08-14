@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #define _GL_TEXTURE_MAX_LEVEL        0x813D
 #define _GL_BGRA_EXT                 0x80E1
 #define _GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
@@ -190,6 +192,97 @@ void Gfx_SetColWriteMask(cc_bool r, cc_bool g, cc_bool b, cc_bool a) {
 void Gfx_SetDepthWrite(cc_bool enabled) { glDepthMask(enabled); }
 void Gfx_SetDepthTest(cc_bool enabled) { gl_Toggle(GL_DEPTH_TEST); }
 
+
+#ifdef CC_BUILD_GL_FB
+/*########################################################################################################################*
+*-------------------------------------------------------Frame buffer------------------------------------------------------*
+*#########################################################################################################################*/
+
+#define MAX_FB_COUNT 32
+
+struct Framebuffer {
+	cc_bool active;
+	int width;
+	int height;
+
+	GLuint fb;
+	GLuint color_tex;
+	GLuint depth_rb;
+};
+
+static struct Framebuffer framebuffers[MAX_FB_COUNT] = { 0 };
+
+GfxResourceID Gfx_GenFramebuffer(int width, int height, GfxResourceID color_attachment){
+	int id = -1;
+	for(int i=0; i<MAX_FB_COUNT; i++){
+		if(!framebuffers[i].active){
+			id = i;
+			break;
+		}
+	}
+
+	if(id == -1){
+		Logger_Abort("Reached maximum framebuffer count");
+		return 0;
+	}
+
+	framebuffers[id].active = true;
+
+	framebuffers[id].width = width;
+	framebuffers[id].height = height;
+	framebuffers[id].color_tex = color_attachment;
+	
+	glGenFramebuffers(1, &framebuffers[id].fb);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[id].fb);
+
+	
+	glGenRenderbuffers(1, &framebuffers[id].depth_rb);
+	glBindRenderbuffer(GL_RENDERBUFFER, framebuffers[id].depth_rb);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, framebuffers[id].depth_rb);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffers[id].color_tex, 0);
+
+	GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
+	glDrawBuffers(1, DrawBuffers);
+
+	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE){
+		printf("Failed creating framebuffer, status is %d, %d\n", glCheckFramebufferStatus(GL_FRAMEBUFFER), glGetError());
+		const GLubyte* ver   = glGetString(GL_VERSION);
+		printf("Version is %s\n\n", ver);
+		printf("\n\n\n\n\n\n");
+		Logger_Abort("Creating framebuffer failed!");
+		return 0;
+	}
+	
+	return id;
+}
+
+void Gfx_BindFramebuffer(GfxResourceID fb) {
+	if(!framebuffers[fb].active) {
+		Logger_Abort("Attempted to bind freed framebuffer");
+		return;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[fb].fb);
+	
+	glViewport(0, 0, framebuffers[fb].width, framebuffers[fb].height);
+}
+
+void Gfx_UnbindFramebuffer(void) {
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, Game.Width, Game.Height);
+}
+
+void Gfx_FreeFramebuffer(GfxResourceID fb) {
+	framebuffers[fb].active = false;
+
+	glDeleteFramebuffers(1, &framebuffers[fb].fb);
+	glDeleteRenderbuffers(1, &framebuffers[fb].depth_rb);
+
+	// color is not owned by us
+}
+#endif
 
 /*########################################################################################################################*
 *---------------------------------------------------------Matrices--------------------------------------------------------*

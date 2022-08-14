@@ -4,6 +4,7 @@
 #include "Errors.h"
 #include "Logger.h"
 #include "Window.h"
+#include <stdio.h>
 /* The OpenGL backend is a bit of a mess, since it's really 2 backends in one:
  * - OpenGL 1.1 (completely lacking GPU, fallbacks to say Windows built-in software rasteriser)
  * - OpenGL 1.5 or OpenGL 1.2 + GL_ARB_vertex_buffer_object (default desktop backend)
@@ -23,6 +24,7 @@
 #endif
 
 /* === BEGIN OPENGL HEADERS === */
+#ifndef CC_BUILD_GL_FB
 typedef unsigned int GLenum;
 typedef unsigned char GLboolean;
 typedef signed char GLbyte;
@@ -139,6 +141,74 @@ GLAPI void APIENTRY glTexParameteri(GLenum target, GLenum pname, GLint param);
 GLAPI void APIENTRY glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid* pixels);
 GLAPI void APIENTRY glVertexPointer(GLint size, GLenum type, GLsizei stride, const GLvoid* pointer);
 GLAPI void APIENTRY glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
+#else
+#include <GL/gl.h>
+#include <GL/glext.h>
+#endif
+/*
+#ifdef CC_BUILD_GL_FB
+#define GL_DEPTH_COMPONENT16              0x81A5
+#define GL_DEPTH_COMPONENT24              0x81A6
+#define GL_DEPTH_COMPONENT32              0x81A7
+
+#define GL_RENDERBUFFER_BINDING           0x8CA7
+#define GL_READ_FRAMEBUFFER               0x8CA8
+#define GL_DRAW_FRAMEBUFFER               0x8CA9
+#define GL_READ_FRAMEBUFFER_BINDING       0x8CAA
+#define GL_RENDERBUFFER_SAMPLES           0x8CAB
+#define GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE 0x8CD0
+#define GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME 0x8CD1
+#define GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL 0x8CD2
+#define GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE 0x8CD3
+#define GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER 0x8CD4
+#define GL_FRAMEBUFFER_COMPLETE           0x8CD5
+#define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8CD6
+#define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT 0x8CD7
+#define GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER 0x8CDB
+#define GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER 0x8CDC
+#define GL_FRAMEBUFFER_UNSUPPORTED        0x8CDD
+#define GL_MAX_COLOR_ATTACHMENTS          0x8CDF
+#define GL_COLOR_ATTACHMENT0              0x8CE0
+#define GL_COLOR_ATTACHMENT1              0x8CE1
+#define GL_COLOR_ATTACHMENT2              0x8CE2
+#define GL_COLOR_ATTACHMENT3              0x8CE3
+#define GL_COLOR_ATTACHMENT4              0x8CE4
+
+
+#define GL_DEPTH_ATTACHMENT               0x8D00
+#define GL_STENCIL_ATTACHMENT             0x8D20
+#define GL_FRAMEBUFFER                    0x8D40
+#define GL_RENDERBUFFER                   0x8D41
+#define GL_RENDERBUFFER_WIDTH             0x8D42
+#define GL_RENDERBUFFER_HEIGHT            0x8D43
+#define GL_RENDERBUFFER_INTERNAL_FORMAT   0x8D44
+#define GL_STENCIL_INDEX1                 0x8D46
+#define GL_STENCIL_INDEX4                 0x8D47
+#define GL_STENCIL_INDEX8                 0x8D48
+#define GL_STENCIL_INDEX16                0x8D49
+
+GLAPI void APIENTRY glDrawBuffers (GLsizei n, const GLenum *bufs);
+
+
+GLAPI GLboolean APIENTRY glIsRenderbuffer (GLuint renderbuffer);
+GLAPI void APIENTRY glBindRenderbuffer (GLenum target, GLuint renderbuffer);
+GLAPI void APIENTRY glDeleteRenderbuffers (GLsizei n, const GLuint *renderbuffers);
+GLAPI void APIENTRY glGenRenderbuffers (GLsizei n, GLuint *renderbuffers);
+GLAPI void APIENTRY glRenderbufferStorage (GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+GLAPI void APIENTRY glGetRenderbufferParameteriv (GLenum target, GLenum pname, GLint *params);
+GLAPI GLboolean APIENTRY glIsFramebuffer (GLuint framebuffer);
+GLAPI void APIENTRY glBindFramebuffer (GLenum target, GLuint framebuffer);
+GLAPI void APIENTRY glDeleteFramebuffers (GLsizei n, const GLuint *framebuffers);
+GLAPI void APIENTRY glGenFramebuffers (GLsizei n, GLuint *framebuffers);
+GLAPI GLenum APIENTRY glCheckFramebufferStatus (GLenum target);
+GLAPI void APIENTRY glFramebufferTexture1D (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+GLAPI void APIENTRY glFramebufferTexture2D (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+GLAPI void APIENTRY glFramebufferTexture3D (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset);
+GLAPI void APIENTRY glFramebufferRenderbuffer (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+GLAPI void APIENTRY glGetFramebufferAttachmentParameteriv (GLenum target, GLenum attachment, GLenum pname, GLint *params);
+GLAPI void APIENTRY glGenerateMipmap (GLenum target);
+#endif
+*/
 /* === END OPENGL HEADERS === */
 
 
@@ -588,6 +658,8 @@ static void GLBackend_Init(void) {
 	static const cc_string vboExt = String_FromConst("GL_ARB_vertex_buffer_object");
 	cc_string extensions = String_FromReadonly((const char*)glGetString(GL_EXTENSIONS));
 	const GLubyte* ver   = glGetString(GL_VERSION);
+
+	printf("OpenGL version is %s\n", ver);
 
 	/* Version string is always: x.y. (and whatever afterwards) */
 	int major = ver[0] - '0', minor = ver[2] - '0';
