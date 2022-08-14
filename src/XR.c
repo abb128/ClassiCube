@@ -30,6 +30,15 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+#define STEAMVR_LINUX
+
+#ifdef STEAMVR_LINUX
+// https://github.com/ValveSoftware/SteamVR-for-Linux/issues/421
+#define OGL_TEST(prefix) { const GLubyte* ver = glGetString(GL_VERSION); if(ver == NULL){ /*XR_LOG(prefix " lost context?");*/ GLContext_Update(); } }
+#else
+#define OGL_TEST(prefix)
+#endif
+
 #define XR_LOG(fmt, ...) printf("[CC_XR] " fmt " \n", ##__VA_ARGS__)
 
 #define TOKENPASTE(x, y) x ## y
@@ -39,16 +48,16 @@
                                 if (TOKENPASTE2(result, __LINE__) != XR_SUCCESS) { \
                                     XR_LOG("ERROR!!! Call to " #fname " on line %d failed with code %d.\n", __LINE__, TOKENPASTE2(result, __LINE__)); \
                                     return false; \
-                                }
+                                } \
+                                OGL_TEST(#fname)
 
 #define CHK_XRQ(fname, expr)   XrResult TOKENPASTE2(result, __LINE__) = expr; \
                                 if (TOKENPASTE2(result, __LINE__) != XR_SUCCESS) { \
                                     XR_LOG("ERROR!!! Call to " #fname " on line %d failed with code %d.\n", __LINE__, TOKENPASTE2(result, __LINE__)); \
-                                    return; \
-                                }
+                                    return; \ 
+                                } \
+                                OGL_TEST(#fname)
 
-
-#define OGL_TEST(prefix) { const GLubyte* ver   = glGetString(GL_VERSION); if(ver == NULL){ XR_LOG(prefix " lost context?"); GLContext_Update(); } }
 
 struct Swapchain {
     uint32_t width;
@@ -276,8 +285,6 @@ int64_t XR_SelectSwapchainFormat(int count, int64_t* formats){
 }
 
 cc_bool XR_CreateSwapchains(void){
-    OGL_TEST("creating swapchain");
-
     uint32_t format_count = 0;
     CHK_XR(xrEnumerateSwapchainFormats,
         xrEnumerateSwapchainFormats(session, 0, &format_count, NULL)
@@ -295,7 +302,7 @@ cc_bool XR_CreateSwapchains(void){
     swapchainCount = configViewCount;
     swapchains = Mem_TryAlloc(swapchainCount, sizeof(Swapchain));
     Mem_Set(swapchains, 0, swapchainCount * sizeof(Swapchain));
-    OGL_TEST("almost")
+
     for(int i=0; i<swapchainCount; i++){
         const XrViewConfigurationView *vp = &configViews[i];
 
@@ -312,11 +319,9 @@ cc_bool XR_CreateSwapchains(void){
         swapchains[i].width = createInfo.width;
         swapchains[i].height = createInfo.width;
 
-        OGL_TEST("create swapchain");
         CHK_XR(xrCreateSwapchain,
             xrCreateSwapchain(session, &createInfo, &swapchains[i].handle)
-        );
-        OGL_TEST("created swapchain");
+        );;
 
         // get images
         int img_count;
@@ -364,13 +369,9 @@ cc_bool XR_CreateSwapchains(void){
 }
 
 cc_bool XR_BeginSession(void){
-    OGL_TEST("starting session");
-
     XrSessionBeginInfo beginInfo = { XR_TYPE_SESSION_BEGIN_INFO };
     beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
     CHK_XR(xrBeginSession, xrBeginSession(session, &beginInfo));
-
-    OGL_TEST("started session");
 
     XR_LOG("Beginning session!!!");
     XR_CreateSwapchains();
@@ -397,8 +398,6 @@ static void XR_Tick(struct ScheduledTask* task){
     if(init_fail) return;
 
     XrEventDataBuffer event = { XR_TYPE_EVENT_DATA_BUFFER };
-
-    OGL_TEST("tick")
 
     XrResult result = xrPollEvent(instance, &event);
     if (result == XR_SUCCESS) {

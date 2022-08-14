@@ -43,6 +43,7 @@ double Math_Exp(double x);
 
 int Math_Floor(float value);
 int Math_Ceil(float value);
+int Math_Round(float value);
 int Math_Log2(cc_uint32 value);
 int Math_CeilDiv(int a, int b);
 int Math_Sign(float value);

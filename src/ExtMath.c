@@ -32,6 +32,10 @@ int Math_Ceil(float value) {
 	return valueI < value ? valueI + 1 : valueI;
 }
 
+int Math_Round(float value) {
+	return Math_Floor(value + 0.5f);
+}
+
 int Math_Log2(cc_uint32 value) {
 	cc_uint32 r = 0;
 	while (value >>= 1) r++;
