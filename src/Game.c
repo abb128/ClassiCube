@@ -36,6 +36,7 @@
 #include "Protocol.h"
 #include "Picking.h"
 #include "Animations.h"
+#include "XR.h"
 
 struct _GameData Game;
 cc_uint64 Game_FrameStart;
@@ -379,6 +380,7 @@ static void Game_Load(void) {
 	Event_Register_(&WindowEvents.Closing,         NULL, Game_Free);
 	Event_Register_(&WindowEvents.InactiveChanged, NULL, HandleInactiveChanged);
 
+	Game_AddComponent(&XR_Component);
 	Game_AddComponent(&World_Component);
 	Game_AddComponent(&Textures_Component);
 	Game_AddComponent(&Input_Component);

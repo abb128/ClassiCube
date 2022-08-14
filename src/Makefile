@@ -40,7 +40,7 @@ LIBS=-mwindows -lws2_32 -lwininet -lwinmm -limagehlp -lcrypt32 -ld3d9
 endif
 
 ifeq ($(PLAT),linux)
-LIBS=-lX11 -lXi -lpthread -lGL -lm -ldl
+LIBS=-lX11 -lXi -lpthread -lGL -lm -ldl -lopenxr_loader
 endif
 
 ifeq ($(PLAT),sunos)
