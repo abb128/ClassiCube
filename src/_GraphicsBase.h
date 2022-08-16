@@ -65,7 +65,7 @@ static void FreeDefaultResources(void) {
 	Gfx_DeleteIb(&Gfx_defaultIb);
 }
 
-#ifdef CC_BUILD_WEB
+#if defined(CC_BUILD_WEB) || defined(CC_BUILD_OPENXR)
 static void LimitFPS(void) {
 	/* Can't use Thread_Sleep on the web. (spinwaits instead of sleeping) */
 	/* However this is not a problem, because GLContext_SetVsync */

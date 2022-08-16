@@ -565,6 +565,7 @@ static void Game_RenderFrame(double delta) {
 	if(use_openxr){
 		ctx = XR_InitFrameContext();
 		XR_WaitFrame(ctx);
+		XR_BeginFrame(ctx);
 	}
 #endif
 
@@ -587,9 +588,21 @@ static void Game_RenderFrame(double delta) {
 	Gfx_BindIb(Gfx_defaultIb);
 	Game.Time += delta;
 	Game_Vertices = 0;
+	
+	
+#ifdef CC_BUILD_OPENXR
+	if(use_openxr) XR_GameInputTick(ctx, delta);
+#endif
 
-	Camera.Active->UpdateMouse(delta);
-	if (!WindowInfo.Focused && !Gui.InputGrab) Gui_ShowPauseMenu();
+#ifdef CC_BUILD_OPENXR
+	if(!use_openxr) {
+#endif
+		Camera.Active->UpdateMouse(delta);
+		if (!WindowInfo.Focused && !Gui.InputGrab) Gui_ShowPauseMenu();
+#ifdef CC_BUILD_OPENXR
+	}
+#endif
+
 
 	if (KeyBind_IsPressed(KEYBIND_ZOOM_SCROLL) && !Gui.InputGrab) {
 		InputHandler_SetFOV(Camera.ZoomFov);
@@ -610,39 +623,29 @@ static void Game_RenderFrame(double delta) {
 
 #ifdef CC_BUILD_OPENXR
 	if(use_openxr){
+		cc_bool prev_hideGui = Game_HideGui;
+		Game_HideGui = true;
 		struct XRViewRender view = { 0 };
 
-		XR_BeginFrame(ctx);
 
+		// TODO: Floating entity
 		Vec3 pos = LocalPlayer_Instance.Base.Position;
-		float yaw = LocalPlayer_Instance.Base.Yaw / 180 * 3.1415926535897;
-		yaw = Math_Round(yaw/0.7853982f)*0.7853982f;
 
 		while(XR_RenderNextView(ctx, &view)) {
 			struct Matrix translation = Matrix_IdentityValue;
-			struct Matrix rotation = Matrix_IdentityValue;
-
-			struct Matrix base = Matrix_IdentityValue;
-
 			struct Matrix combined = Matrix_IdentityValue;
 
 			Matrix_Translate(&translation, -pos.X, -pos.Y, -pos.Z);
-			Matrix_RotateY(&rotation, yaw);
-			Matrix_Mul(&base, &translation, &rotation);
-			Matrix_Mul(&combined, &base, &view.pose);
+			Matrix_Mul(&combined, &translation, &view.pose);
 
 			Gfx_BindFramebuffer(view.framebuffer);
 			Gfx_Clear();
 
-			//Gfx_LoadMatrix(MATRIX_PROJECTION, &Gfx.Projection);
-			Gfx_LoadMatrix(MATRIX_VIEW,       &combined);
+			Gfx.Projection = view.projection;
+			Gfx.View = combined;
 
-			
-			//Matrix_Mul(&mult_result, &view.pose, &Gfx.View);
-
-			Gfx_LoadMatrix(MATRIX_PROJECTION, &view.projection);
-			//Gfx_LoadMatrix(MATRIX_VIEW,       &mult_result);
-
+			Gfx_LoadMatrix(MATRIX_PROJECTION, &Gfx.Projection);
+			Gfx_LoadMatrix(MATRIX_VIEW,       &Gfx.View);
 
 			FrustumCulling_CalcFrustumEquations(&view.projection, &combined);
 
@@ -658,11 +661,16 @@ static void Game_RenderFrame(double delta) {
 		XR_SubmitFrame(ctx);
 
 		XR_FreeFrameContext(ctx);
+		
+		UpdateViewMatrix();
+		Camera_UpdateProjection();
+		Game_HideGui = prev_hideGui;
 	}
 #endif
 
 	FrustumCulling_CalcFrustumEquations(&Gfx.Projection, &Gfx.View);
 
+	
 	Gfx_Clear();
 
 	Gfx_LoadMatrix(MATRIX_PROJECTION, &Gfx.Projection);

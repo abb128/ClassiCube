@@ -14,7 +14,6 @@
 #include "Utils.h"
 #include "World.h"
 #include "Options.h"
-#include "XR.h" //TODO: We won't need this later
 
 int MapRenderer_1DUsedCount;
 struct ChunkPartInfo* MapRenderer_PartsNormal;
@@ -618,12 +617,6 @@ static void UpdateChunks(double delta) {
 	p = &LocalPlayer_Instance;
 	samePos = Vec3_Equals(&Camera.CurrentPos, &lastCamPos)
 		&& p->Base.Pitch == lastPitch && p->Base.Yaw == lastYaw;
-	
-#ifdef CC_BUILD_OPENXR
-	// TODO: At some poitn we'll be updating the entity directly
-	// so we wont need this
-	if(XR_IsActive()) samePos = false;
-#endif
 
 	renderChunksCount = samePos ?
 		UpdateChunksStill(&chunkUpdates) :

@@ -15,6 +15,9 @@
 #include "Block.h"
 #include "Options.h"
 #include "Window.h"
+#include "Entity.h"
+#include "Input.h"
+#include "Gui.h"
 
 #ifndef CC_BUILD_X11
 #error "Only X11 is supported for now"
@@ -29,6 +32,7 @@
 
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+#include "xrmath.h"
 
 #define STEAMVR_LINUX
 
@@ -400,8 +404,8 @@ cc_bool XR_CreateSwapchains(void){
         XrSwapchainCreateInfo createInfo = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
         createInfo.arraySize = 1;
         createInfo.format = format;
-        createInfo.width = vp->recommendedImageRectWidth;
-        createInfo.height = vp->recommendedImageRectHeight;
+        createInfo.width = vp->recommendedImageRectWidth * 2;
+        createInfo.height = vp->recommendedImageRectHeight * 2;
         createInfo.mipCount = 1;
         createInfo.faceCount = 1;
         createInfo.sampleCount = 1;
@@ -526,7 +530,9 @@ struct XRFrameContext {
 
     int viewHead;
     int viewMax;
-    int imageIndices[2];
+
+    float cam_y;
+    XrPosef cam_pose;
 };
 
 struct XRFrameContext *XR_InitFrameContext() {
@@ -537,12 +543,9 @@ struct XRFrameContext *XR_InitFrameContext() {
     result->viewState.type = XR_TYPE_VIEW_STATE;
     result->views[0].type = XR_TYPE_VIEW;
     result->views[1].type = XR_TYPE_VIEW;
-
+    
     result->viewHead = 0;
     result->viewMax = 0;
-
-    result->imageIndices[0] = -1;
-    result->imageIndices[1] = -1;
 
     return result;
 }
@@ -550,11 +553,176 @@ void XR_FreeFrameContext(struct XRFrameContext *ctx) {
     Mem_Free(ctx);
 }
 
+static float yawOffset = 0.0f;
+static struct Matrix yawOffsetMatrix = Matrix_IdentityValue;
+static struct Matrix yawOffsetInverseMatrix = Matrix_IdentityValue;
+void XR_WaitFrame(struct XRFrameContext *ctx) {
+    XrFrameWaitInfo frameWaitInfo = { XR_TYPE_FRAME_WAIT_INFO };
+
+    CHK_XRQ(xrWaitFrame,
+        xrWaitFrame(session, &frameWaitInfo, &ctx->frameState)
+    );
+}
 
 
+void CopyXrMatrix4x4fToMatrix(struct Matrix *result, const XrMatrix4x4f *src) {
+    result->row1.X = src->m[0];
+    result->row1.Y = src->m[1];
+    result->row1.Z = src->m[2];
+    result->row1.W = src->m[3];
+    result->row2.X = src->m[4+0];
+    result->row2.Y = src->m[4+1];
+    result->row2.Z = src->m[4+2];
+    result->row2.W = src->m[4+3];
+    result->row3.X = src->m[4+4+0];
+    result->row3.Y = src->m[4+4+1];
+    result->row3.Z = src->m[4+4+2];
+    result->row3.W = src->m[4+4+3];
+    result->row4.X = src->m[4+4+4+0];
+    result->row4.Y = src->m[4+4+4+1];
+    result->row4.Z = src->m[4+4+4+2];
+    result->row4.W = src->m[4+4+4+3];
+}
+
+struct Matrix ConvertOpenXRPoseToMatrix(XrPosef pose, cc_bool position_invert) {
+    XrMatrix4x4f result_m;
+    XrMatrix4x4f_CreateViewMatrix(&result_m, &pose.position, &pose.orientation);
+
+    struct Matrix result = Matrix_IdentityValue;
+    CopyXrMatrix4x4fToMatrix(&result, &result_m);
+
+    return result;
+}
 
 
-cc_bool XR_GameInputTick(struct XRFrameContext* ctx) {
+void XR_BeginFrame(struct XRFrameContext *ctx) {
+    XrFrameBeginInfo frameBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
+
+    CHK_XRQ(xrBeginFrame,
+        xrBeginFrame(session, &frameBeginInfo)
+    );
+
+    // view position
+    XrViewLocateInfo viewLocateInfo = { XR_TYPE_VIEW_LOCATE_INFO };
+    viewLocateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+    viewLocateInfo.displayTime = ctx->frameState.predictedDisplayTime;
+    viewLocateInfo.space = space;
+
+    CHK_XRQ(xrLocateViews,
+        xrLocateViews(session, &viewLocateInfo, &ctx->viewState, 2, &ctx->viewMax, ctx->views)
+    );
+
+    // head position
+    XrSpaceLocation headPose = { XR_TYPE_SPACE_LOCATION, NULL, 0, {{0, 0, 0, 1}, {0, 0, 0}} };
+	CHK_XR(xrLocateSpace, xrLocateSpace(headspace, space, ctx->frameState.predictedDisplayTime, &headPose));
+    ctx->cam_pose = headPose.pose;
+}
+
+cc_bool XR_RenderNextView(struct XRFrameContext *ctx, struct XRViewRender *view) {
+    if(ctx->viewHead > 0){
+        CHK_XR(xrReleaseSwapchainImage,
+            xrReleaseSwapchainImage(swapchains[ctx->viewHead - 1].handle, NULL)
+        );
+    }
+
+    if(ctx->viewHead >= ctx->viewMax) return false;
+
+    XrView *current = &ctx->views[ctx->viewHead];
+    XrPosef pose = current->pose;
+
+    // We subtract head XZ, because we handle XZ movement separately.
+    pose.position.x -= ctx->cam_pose.position.x;
+    pose.position.z -= ctx->cam_pose.position.z;
+
+    XrFovf fov = current->fov;
+
+    struct Matrix in = ConvertOpenXRPoseToMatrix(pose, false);
+    Matrix_Mul(&view->pose, &yawOffsetMatrix, &in);
+
+    XrMatrix4x4f projection_matrix;
+    XrMatrix4x4f_CreateProjectionFov(&projection_matrix, GRAPHICS_OPENGL, current->fov, 0.05f, (float)Game_ViewDistance);
+    
+    CopyXrMatrix4x4fToMatrix(&view->projection, &projection_matrix);
+    
+    uint32_t image_index;
+    CHK_XR(xrAcquireSwapchainImage,
+        xrAcquireSwapchainImage(swapchains[ctx->viewHead].handle, NULL, &image_index)
+    );
+
+    view->framebuffer = swapchains[ctx->viewHead].framebuffers[image_index];
+
+
+    XrSwapchainImageWaitInfo waitInfo = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    CHK_XR(xrWaitSwapchainImage,
+        xrWaitSwapchainImage(swapchains[ctx->viewHead].handle, &waitInfo)
+    );
+
+
+    ctx->viewHead++;
+
+
+    return true;
+}
+
+void XR_SubmitFrame(struct XRFrameContext *ctx) {
+    XrCompositionLayerProjectionView projViews[2] = { {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW} };
+    for(int i=0; i<2; i++){
+        projViews[i].pose = ctx->views[i].pose;
+        projViews[i].fov = ctx->views[i].fov;
+        projViews[i].subImage.swapchain = swapchains[i].handle;
+        projViews[i].subImage.imageArrayIndex = 0;
+        projViews[i].subImage.imageRect.offset.x = 0;
+        projViews[i].subImage.imageRect.offset.y = 0;
+        projViews[i].subImage.imageRect.extent.width = swapchains[i].width;
+        projViews[i].subImage.imageRect.extent.height = swapchains[i].height;
+    }
+
+    XrCompositionLayerProjection layerProj = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
+    layerProj.space = space;
+	layerProj.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+    layerProj.viewCount = 2;
+    layerProj.views = projViews;
+
+
+    const XrCompositionLayerBaseHeader * const layers[] = {
+        (XrCompositionLayerBaseHeader*)&layerProj
+    };
+
+    XrFrameEndInfo endInfo = { XR_TYPE_FRAME_END_INFO };
+    endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    endInfo.displayTime = ctx->frameState.predictedDisplayTime;
+    endInfo.layerCount = 1;
+    endInfo.layers = layers;
+
+    CHK_XRQ(xrEndFrame,
+        xrEndFrame(session, &endInfo)
+    );
+}
+
+static cc_bool wasMovementInitialized = false;
+static float xMove = 0.0f;
+static float yMove = 0.0f;
+void XR_GetMovement(float *x, float *y) {
+    *x += xMove;
+    *y += yMove;
+}
+
+const struct LocalPlayerInput xrInput = {
+    .GetMovement = &XR_GetMovement,
+};
+
+cc_bool XR_GameInputTick(struct XRFrameContext* ctx, double delta) {
+    if(!wasMovementInitialized){
+        XR_LOG("Initializing movement");
+        for(struct LocalPlayerInput *input = &LocalPlayer_Instance.input; input; input = input->next){
+            if(input->next == NULL) {
+                input->next = &xrInput;
+                wasMovementInitialized = true;
+                break;
+            }
+        }
+    }
     XrActiveActionSet activeActionSet = { actionSetGame, XR_NULL_PATH };
     XrActionsSyncInfo syncInfo = { XR_TYPE_ACTIONS_SYNC_INFO };
     syncInfo.countActiveActionSets = 1;
@@ -580,136 +748,85 @@ cc_bool XR_GameInputTick(struct XRFrameContext* ctx) {
     getInfo.action = GameActions.rotate_vec2;
     CHK_XR(xrGetActionStateVector2f, xrGetActionStateVector2f(session, &getInfo, &rotateState));
 
-    // head position
-    XrTime time = ctx->frameState.predictedDisplayTime;
-    XrSpaceLocation headPose = { XR_TYPE_SPACE_LOCATION, NULL, 0, {{0, 0, 0, 1}, {0, 0, 0}} };
-	CHK_XR(xrLocateSpace, xrLocateSpace(headspace, space, time, &headPose));
 
+    // set jump and fly    
+    XrPressed[KEYBIND_JUMP] = jumpState.currentState && jumpState.isActive;
+    XrPressed[KEYBIND_FLY_UP] = rotateState.isActive && (rotateState.currentState.y > 0.5f);
+    XrPressed[KEYBIND_FLY_DOWN] = rotateState.isActive && (rotateState.currentState.y < -0.5f);
 
-    // do something with jumpState, walkState, rotateState, head_pose
-}
+    // set move
+    xMove = walkState.isActive ? walkState.currentState.x : 0.0f;
+    yMove = walkState.isActive ? -walkState.currentState.y : 0.0f;
 
-void XR_WaitFrame(struct XRFrameContext *ctx) {
-    XrFrameWaitInfo frameWaitInfo = { XR_TYPE_FRAME_WAIT_INFO };
+    // rotate
+    if(rotateState.isActive){
+        static cc_bool didReachLimit = false;
+        if(Math_AbsF(rotateState.currentState.x) > 0.666){
+            if(!didReachLimit){
+                yawOffset += (rotateState.currentState.x > 0 ? 1.0f : -1.0f) * (3.14159265358f/4.0f);
+                Matrix_RotateY(&yawOffsetMatrix, yawOffset);
+                Matrix_RotateY(&yawOffsetInverseMatrix, -yawOffset);
+            }
+            didReachLimit = true;
+        }else if(Math_AbsF(rotateState.currentState.x) < 0.4) {
+            didReachLimit = false;
+        }
 
-    CHK_XRQ(xrWaitFrame,
-        xrWaitFrame(session, &frameWaitInfo, &ctx->frameState)
-    );
-
-
-    if(!XR_GameInputTick(ctx)){
-        XR_LOG("Input tick error!");
-    }
-}
-
-
-struct Matrix ConvertOpenXRPoseToMatrix(XrPosef pose) {
-    struct Matrix translation = Matrix_IdentityValue;
-    Matrix_Translate(&translation, -pose.position.x, -pose.position.y, -pose.position.z);
-
-    struct Matrix rotation;
-    Matrix_Orientation(&rotation, (float *)&pose.orientation);
-
-    struct Matrix result = Matrix_IdentityValue;
-    Matrix_Mul(&result, &translation, &rotation);
-
-    return result;
-}
-
-
-void XR_BeginFrame(struct XRFrameContext *ctx) {
-    XrFrameBeginInfo frameBeginInfo = { XR_TYPE_FRAME_BEGIN_INFO };
-
-    CHK_XRQ(xrBeginFrame,
-        xrBeginFrame(session, &frameBeginInfo)
-    );
-
-
-
-    XrViewLocateInfo viewLocateInfo = { XR_TYPE_VIEW_LOCATE_INFO };
-    viewLocateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-    viewLocateInfo.displayTime = ctx->frameState.predictedDisplayTime;
-    viewLocateInfo.space = space;
-
-    CHK_XRQ(xrLocateViews,
-        xrLocateViews(session, &viewLocateInfo, &ctx->viewState, 2, &ctx->viewMax, ctx->views)
-    );
-}
-
-cc_bool XR_RenderNextView(struct XRFrameContext *ctx, struct XRViewRender *view) {
-    if(ctx->viewHead > 0){
-        CHK_XR(xrReleaseSwapchainImage,
-            xrReleaseSwapchainImage(swapchains[ctx->viewHead - 1].handle, NULL)
-        );
+        // smooth rotation
+        //yawOffset += rotateState.currentState.x * delta * 8.0;
     }
 
-    if(ctx->viewHead >= ctx->viewMax) return false;
+    // set player position
+    {
+        float currPoseX = ctx->cam_pose.position.x;
+        float currPoseZ = ctx->cam_pose.position.z;
 
-    XrView *current = &ctx->views[ctx->viewHead];
-    XrPosef pose = current->pose;
-    XrFovf fov = current->fov;
-
-    view->pose = ConvertOpenXRPoseToMatrix(pose);
-    
-    float zNear = 0.05f;
-    float zFar = (float)Game_ViewDistance;
-    Matrix_Perspective(&view->projection, fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown, zNear, zFar);
+        static float lastX = 0.0f;
+        static float lastZ = 0.0f;
 
 
-    
-    uint32_t image_index;
-    CHK_XR(xrAcquireSwapchainImage,
-        xrAcquireSwapchainImage(swapchains[ctx->viewHead].handle, NULL, &image_index)
-    );
+        Vec3 difference = Vec3_Create3(currPoseX-lastX, 0.0f, currPoseZ-lastZ);
 
-    ctx->imageIndices[ctx->viewHead] = (int)image_index;
+        // no idea why we need inverse here
+        Vec3_Transform(&difference, &difference, &yawOffsetInverseMatrix);
 
-    view->framebuffer = swapchains[ctx->viewHead].framebuffers[image_index];
+        Vec3_AddBy(&LocalPlayer_Instance.Interp.Next.Pos, &difference);
 
 
-    XrSwapchainImageWaitInfo waitInfo = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-    waitInfo.timeout = XR_INFINITE_DURATION;
-    CHK_XR(xrWaitSwapchainImage,
-        xrWaitSwapchainImage(swapchains[ctx->viewHead].handle, &waitInfo)
-    );
-
-
-    ctx->viewHead++;
-
-
-    return true;
-}
-
-void XR_SubmitFrame(struct XRFrameContext *ctx) {
-    XrCompositionLayerProjectionView projViews[2] = { {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW} };
-    for(int i=0; i<2; i++){
-        projViews[i].pose = ctx->views[i].pose;
-        projViews[i].fov = ctx->views[i].fov;
-        projViews[i].subImage.swapchain = swapchains[i].handle;
-        projViews[i].subImage.imageRect.extent.width = swapchains[i].width;
-        projViews[i].subImage.imageRect.extent.height = swapchains[i].height;
-        projViews[i].subImage.imageArrayIndex = 0;//ctx->imageIndices[i];
+        lastX = currPoseX;
+        lastZ = currPoseZ;
     }
 
-    XrCompositionLayerProjection layerProj = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
-    layerProj.space = space;
-    layerProj.viewCount = 2;
-    layerProj.views = projViews;
+    // set player yaw and pitch
+    {
+        XrPosef poseRotationOnly = ctx->cam_pose;
+        poseRotationOnly.position.x = 0.0f;
+        poseRotationOnly.position.y = 0.0f;
+        poseRotationOnly.position.z = 0.0f;
 
+        struct Matrix headMatrixIn = ConvertOpenXRPoseToMatrix(poseRotationOnly, false);
+        struct Matrix headMatrix = Matrix_IdentityValue;
+        Matrix_Mul(&headMatrix, &yawOffsetMatrix, &headMatrixIn);
 
-    const XrCompositionLayerBaseHeader * const layers[] = {
-        (XrCompositionLayerBaseHeader*)&layerProj
-    };
+        float yaw = Math_Atan2(headMatrix.row3.Z, -headMatrix.row1.Z) * MATH_RAD2DEG;
+        float pitch = Math_Atan2(headMatrix.row2.Y, headMatrix.row2.Z) * MATH_RAD2DEG;
 
-    XrFrameEndInfo endInfo = { XR_TYPE_FRAME_END_INFO };
-    endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    endInfo.displayTime = ctx->frameState.predictedDisplayTime;
-    endInfo.layerCount = 1;
-    endInfo.layers = layers;
+        if(pitch < -90.0f) {
+            yaw += 180.0f;
+            pitch = -89.9f;
+        }else if(pitch > 90.0f) {
+            yaw -= 180.0f;
+            pitch = 90.0f;
+        }
 
-    CHK_XRQ(xrEndFrame,
-        xrEndFrame(session, &endInfo)
-    );
+        LocalPlayer_Instance.Base.Yaw        = yaw;
+        LocalPlayer_Instance.Interp.Next.Yaw = yaw;
+
+        LocalPlayer_Instance.Base.Pitch        = pitch;
+        LocalPlayer_Instance.Interp.Next.Pitch = pitch;
+    }
+
+    Gui.InputGrab = false;
 }
 
 

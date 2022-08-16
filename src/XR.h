@@ -48,6 +48,9 @@ cc_bool XR_RenderNextView(struct XRFrameContext *ctx, struct XRViewRender *view)
 /* Submits frame, call after done rendering, before XR_FreeFrameContext */
 void XR_SubmitFrame(struct XRFrameContext *ctx);
 
+/* Should be called some time after BeginFrame */
+cc_bool XR_GameInputTick(struct XRFrameContext* ctx, double delta);
+
 
 #endif // CC_BUILD_OPENXR
 #endif // CC_XR_H

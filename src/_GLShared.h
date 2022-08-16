@@ -247,10 +247,7 @@ GfxResourceID Gfx_GenFramebuffer(int width, int height, GfxResourceID color_atta
 	glDrawBuffers(1, DrawBuffers);
 
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE){
-		printf("Failed creating framebuffer, status is %d, %d\n", glCheckFramebufferStatus(GL_FRAMEBUFFER), glGetError());
-		const GLubyte* ver   = glGetString(GL_VERSION);
-		printf("Version is %s\n\n", ver);
-		printf("\n\n\n\n\n\n");
+		printf("Failed creating framebuffer, status is %d\n", glCheckFramebufferStatus(GL_FRAMEBUFFER));
 		Logger_Abort("Creating framebuffer failed!");
 		return 0;
 	}

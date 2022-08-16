@@ -138,6 +138,10 @@ extern cc_uint8 KeyBinds[KEYBIND_COUNT];
 /* Default key that each key binding is bound to */
 extern const cc_uint8 KeyBind_Defaults[KEYBIND_COUNT];
 
+#ifdef CC_BUILD_OPENXR
+extern cc_bool XrPressed[KEYBIND_COUNT];
+#endif
+
 /* Gets whether the key bound to the given key binding is pressed. */
 CC_API cc_bool KeyBind_IsPressed(KeyBind binding);
 /* Set the key that the given key binding is bound to. (also updates options list) */

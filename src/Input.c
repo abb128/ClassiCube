@@ -339,7 +339,12 @@ static const char* const keybindNames[KEYBIND_COUNT] = {
 	"DropBlock", "IDOverlay", "BreakableLiquids"
 };
 
+#ifdef CC_BUILD_OPENXR
+cc_bool XrPressed[KEYBIND_COUNT] = { 0 };
+cc_bool KeyBind_IsPressed(KeyBind binding) { return Input_Pressed[KeyBinds[binding]] || XrPressed[binding]; }
+#else
 cc_bool KeyBind_IsPressed(KeyBind binding) { return Input_Pressed[KeyBinds[binding]]; }
+#endif
 
 static void KeyBind_Load(void) {
 	cc_string name; char nameBuffer[STRING_SIZE + 1];
