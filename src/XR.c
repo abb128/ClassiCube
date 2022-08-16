@@ -804,7 +804,30 @@ cc_bool XR_GameInputTick(struct XRFrameContext* ctx, double delta) {
         // no idea why we need inverse here
         Vec3_Transform(&difference, &difference, &yawOffsetInverseMatrix);
 
-        Vec3_AddBy(&LocalPlayer_Instance.Interp.Next.Pos, &difference);
+        cc_bool oldOnGround = LocalPlayer_Instance.Base.OnGround;
+        Vec3 oldPos = LocalPlayer_Instance.Base.Position;
+        Vec3 oldVelocity = LocalPlayer_Instance.Base.Velocity;
+
+        LocalPlayer_Instance.Base.Position = LocalPlayer_Instance.Interp.Next.Pos;
+        LocalPlayer_Instance.Base.Velocity = difference;
+
+        if(!LocalPlayer_Instance.Hacks.Noclip) {
+            Collisions_MoveAndWallSlide(&LocalPlayer_Instance.Collisions);
+        }
+
+	    Vec3_AddBy(&LocalPlayer_Instance.Interp.Next.Pos, &LocalPlayer_Instance.Base.Velocity);
+
+        if(LocalPlayer_Instance.Base.Position.Y > LocalPlayer_Instance.Interp.Next.Pos.Y){
+            LocalPlayer_Instance.Interp.Next.Pos.Y = LocalPlayer_Instance.Base.Position.Y;
+        }
+
+        //if(Collisions_HitHorizontal(&LocalPlayer_Instance.Collisions)){
+        //    XR_LOG("TODO: this might be jarring, collided");
+        //}
+
+        LocalPlayer_Instance.Base.OnGround = oldOnGround;
+        LocalPlayer_Instance.Base.Position = oldPos;
+        LocalPlayer_Instance.Base.Velocity = oldVelocity;
 
 
         lastX = currPoseX;
