@@ -59,6 +59,12 @@
                                 OGL_TEST(#fname)
 
 
+#define STR_COPY(const_str, dest, max_size) Mem_Copy(dest, const_str, min(sizeof(const_str), max_size));
+
+
+const char GAME_ACTION_SET_NAME[] = "ingameactions";
+const char GAME_ACTION_SET_NAME_LOCAL[] = "In-Game Actions";
+
 struct Swapchain {
     uint32_t width;
     uint32_t height;
@@ -79,6 +85,8 @@ static XrInstance instance = { 0 };
 static XrSystemId systemId = XR_NULL_SYSTEM_ID;
 static XrSession session = { 0 };
 static XrSpace space = { 0 };
+static XrSpace headspace = { 0 };
+static XrActionSet actionSetGame;
 
 static XrViewConfigurationView *configViews = 0;
 static Swapchain *swapchains = 0;
@@ -87,14 +95,79 @@ static uint32_t configViewCount = 0;
 static uint32_t swapchainCount = 0;
 
 
+
+const char GAME_ACTION_WALK_NAME[] = "walk";
+const char GAME_ACTION_WALK_NAME_LOCAL[] = "Walk";
+const char GAME_ACTION_ROTATE_NAME[] = "rotate";
+const char GAME_ACTION_ROTATE_NAME_LOCAL[] = "Rotate";
+const char GAME_ACTION_JUMP_NAME[] = "jump";
+const char GAME_ACTION_JUMP_NAME_LOCAL[] = "Jump";
+static struct {
+    XrAction walk_vec2;   // usually left joystick
+    XrAction rotate_vec2; // usually right joystick
+
+    XrAction jump_bool;   // usually right A
+} GameActions;
+
+cc_bool XR_InitGameActions( void ) {
+    XrActionCreateInfo actionInfo = { XR_TYPE_ACTION_CREATE_INFO };
+
+    actionInfo.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
+    STR_COPY(GAME_ACTION_JUMP_NAME,       actionInfo.actionName,          XR_MAX_ACTION_NAME_SIZE);
+    STR_COPY(GAME_ACTION_JUMP_NAME_LOCAL, actionInfo.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+    CHK_XR(xrCreateAction, xrCreateAction(actionSetGame, &actionInfo, &GameActions.jump_bool));
+
+    actionInfo.actionType = XR_ACTION_TYPE_VECTOR2F_INPUT;
+    STR_COPY(GAME_ACTION_WALK_NAME,       actionInfo.actionName,          XR_MAX_ACTION_NAME_SIZE);
+    STR_COPY(GAME_ACTION_WALK_NAME_LOCAL, actionInfo.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+    CHK_XR(xrCreateAction, xrCreateAction(actionSetGame, &actionInfo, &GameActions.walk_vec2));
+
+    actionInfo.actionType = XR_ACTION_TYPE_VECTOR2F_INPUT;
+    STR_COPY(GAME_ACTION_ROTATE_NAME,       actionInfo.actionName,          XR_MAX_ACTION_NAME_SIZE);
+    STR_COPY(GAME_ACTION_ROTATE_NAME_LOCAL, actionInfo.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE);
+    CHK_XR(xrCreateAction, xrCreateAction(actionSetGame, &actionInfo, &GameActions.rotate_vec2));
+
+
+    // suggested bindings for oculus
+
+    XrPath oculusProfile;
+    CHK_XR(xrStringToPath, xrStringToPath(instance, "/interaction_profiles/oculus/touch_controller", &oculusProfile));
+
+    XrPath AButton, leftJoystick, rightJoystick;
+    CHK_XR(xrStringToPath, xrStringToPath(instance, "/user/hand/right/input/a/click", &AButton));
+    CHK_XR(xrStringToPath, xrStringToPath(instance, "/user/hand/right/input/thumbstick", &rightJoystick));
+    CHK_XR(xrStringToPath, xrStringToPath(instance, "/user/hand/left/input/thumbstick", &leftJoystick));
+
+    XrActionSuggestedBinding bindings[3] = {
+        {.action = GameActions.jump_bool, .binding = AButton},
+        {.action = GameActions.walk_vec2, .binding = leftJoystick},
+        {.action = GameActions.rotate_vec2, .binding = rightJoystick},
+    };
+
+    XrInteractionProfileSuggestedBinding suggestedBindings = { XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
+    suggestedBindings.interactionProfile = oculusProfile;
+    suggestedBindings.suggestedBindings = bindings;
+    suggestedBindings.countSuggestedBindings = sizeof(bindings) / sizeof(bindings[0]);
+
+    CHK_XR(xrSuggestInteractionProfileBindings, xrSuggestInteractionProfileBindings(instance, &suggestedBindings));
+
+
+    // attach
+
+    XrSessionActionSetsAttachInfo attachInfo = { XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO };
+    attachInfo.countActionSets = 1;
+    attachInfo.actionSets = &actionSetGame;
+    CHK_XR(xrAttachSessionActionSets, xrAttachSessionActionSets(session, &attachInfo));
+}
+
 static PFN_xrGetOpenGLGraphicsRequirementsKHR xrGetOpenGLGraphicsRequirementsKHR = 0;
 
 XrVersion ConvertVersion(uint16_t major, uint16_t minor, uint32_t patch) {
     return ((uint64_t)patch) | (((uint64_t)minor) << 32) | (((uint64_t)major) << 48);
 }
 
-const char ApplicationName[] = GAME_APP_NAME;
-const char EngineName[]      = GAME_APP_NAME;
+const char APPLICATION_NAME[] = GAME_APP_NAME;
+const char ENGINE_NAME[]      = GAME_APP_NAME;
 
 void XR_ObtainInstance( void ) {
     const char OpenGLExtension[] = XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
@@ -120,8 +193,9 @@ void XR_ObtainInstance( void ) {
         .enabledExtensionNames = enabledExtensionNames
     };
 
-    Mem_Copy(createInfo.applicationInfo.applicationName, ApplicationName, min(sizeof(ApplicationName), XR_MAX_APPLICATION_NAME_SIZE));
-    Mem_Copy(createInfo.applicationInfo.engineName,      EngineName,      min(sizeof(EngineName), XR_MAX_ENGINE_NAME_SIZE));
+
+    STR_COPY(APPLICATION_NAME, createInfo.applicationInfo.applicationName, XR_MAX_APPLICATION_NAME_SIZE);
+    STR_COPY(ENGINE_NAME,      createInfo.applicationInfo.engineName,      XR_MAX_ENGINE_NAME_SIZE);
 
     XrResult result = xrCreateInstance(&createInfo, &instance);
 
@@ -225,6 +299,7 @@ cc_bool XR_Init( void ) {
         Mem_Free(binding);
     }
 
+    // create space
     {
         XrReferenceSpaceCreateInfo createInfo = {
             .type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO,
@@ -237,8 +312,24 @@ cc_bool XR_Init( void ) {
         };
 
         CHK_XR(xrCreateReferenceSpace, xrCreateReferenceSpace(session, &createInfo, &space));
+
+        createInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+
+        CHK_XR(xrCreateReferenceSpace, xrCreateReferenceSpace(session, &createInfo, &headspace));
     }
     
+
+    // create game action set
+    {
+        XrActionSetCreateInfo createInfo = { XR_TYPE_ACTION_SET_CREATE_INFO };
+        STR_COPY(GAME_ACTION_SET_NAME, createInfo.actionSetName, XR_MAX_ACTION_SET_NAME_SIZE);
+        STR_COPY(GAME_ACTION_SET_NAME_LOCAL, createInfo.localizedActionSetName, XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE);
+        createInfo.priority = 1;
+
+        CHK_XR(xrCreateActionSet, xrCreateActionSet(instance, &createInfo, &actionSetGame));
+
+        if(!XR_InitGameActions()) return false;
+    }
     
     XR_LOG(":)");
     
@@ -459,12 +550,56 @@ void XR_FreeFrameContext(struct XRFrameContext *ctx) {
     Mem_Free(ctx);
 }
 
+
+
+
+
+cc_bool XR_GameInputTick(struct XRFrameContext* ctx) {
+    XrActiveActionSet activeActionSet = { actionSetGame, XR_NULL_PATH };
+    XrActionsSyncInfo syncInfo = { XR_TYPE_ACTIONS_SYNC_INFO };
+    syncInfo.countActiveActionSets = 1;
+    syncInfo.activeActionSets = &activeActionSet;
+    CHK_XR(xrSyncActions, xrSyncActions(session, &syncInfo));
+
+
+
+    XrActionStateGetInfo getInfo = { XR_TYPE_ACTION_STATE_GET_INFO };
+
+    // query jump
+    XrActionStateBoolean jumpState = { XR_TYPE_ACTION_STATE_BOOLEAN };
+    getInfo.action = GameActions.jump_bool;
+    CHK_XR(xrGetActionStateBoolean, xrGetActionStateBoolean(session, &getInfo, &jumpState));
+
+    // query walk
+    XrActionStateVector2f walkState = { XR_TYPE_ACTION_STATE_VECTOR2F };
+    getInfo.action = GameActions.walk_vec2;
+    CHK_XR(xrGetActionStateVector2f, xrGetActionStateVector2f(session, &getInfo, &walkState));;
+
+    // query rotate
+    XrActionStateVector2f rotateState = { XR_TYPE_ACTION_STATE_VECTOR2F };
+    getInfo.action = GameActions.rotate_vec2;
+    CHK_XR(xrGetActionStateVector2f, xrGetActionStateVector2f(session, &getInfo, &rotateState));
+
+    // head position
+    XrTime time = ctx->frameState.predictedDisplayTime;
+    XrSpaceLocation headPose = { XR_TYPE_SPACE_LOCATION, NULL, 0, {{0, 0, 0, 1}, {0, 0, 0}} };
+	CHK_XR(xrLocateSpace, xrLocateSpace(headspace, space, time, &headPose));
+
+
+    // do something with jumpState, walkState, rotateState, head_pose
+}
+
 void XR_WaitFrame(struct XRFrameContext *ctx) {
     XrFrameWaitInfo frameWaitInfo = { XR_TYPE_FRAME_WAIT_INFO };
 
     CHK_XRQ(xrWaitFrame,
         xrWaitFrame(session, &frameWaitInfo, &ctx->frameState)
     );
+
+
+    if(!XR_GameInputTick(ctx)){
+        XR_LOG("Input tick error!");
+    }
 }
 
 
@@ -501,7 +636,6 @@ void XR_BeginFrame(struct XRFrameContext *ctx) {
     );
 }
 
-/* Iterate this in a loop until it returns false */
 cc_bool XR_RenderNextView(struct XRFrameContext *ctx, struct XRViewRender *view) {
     if(ctx->viewHead > 0){
         CHK_XR(xrReleaseSwapchainImage,

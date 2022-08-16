@@ -17,7 +17,7 @@ struct XRFrameContext;
 struct XRViewRender {
     struct Matrix pose;
     struct Matrix projection;
-    GfxResourceID framebuffer
+    GfxResourceID framebuffer;
 };
 
 
