@@ -275,7 +275,7 @@ static GfxResourceID skybox_tex, skybox_vb;
 cc_bool EnvRenderer_ShouldRenderSkybox(void) { return skybox_tex && !EnvRenderer_Minimal; }
 
 void EnvRenderer_RenderSkybox(void) {
-	struct Matrix m, rotX, rotY, view;
+	struct Matrix m, rotX, rotY;
 	float rotTime;
 	Vec3 pos;
 	if (!skybox_vb) return;
@@ -292,10 +292,13 @@ void EnvRenderer_RenderSkybox(void) {
 	Matrix_Mul(&m, &rotY, &rotX);
 
 	/* Rotate around camera */
-	pos = Camera.CurrentPos;
-	Vec3_Set(Camera.CurrentPos, 0,0,0);
-	Camera.Active->GetView(&view); Matrix_MulBy(&m, &view);
-	Camera.CurrentPos = pos;
+	struct Matrix view_rot = {
+		Gfx.View.row1.X, Gfx.View.row1.Y, Gfx.View.row1.Z, 0.0f,
+		Gfx.View.row2.X, Gfx.View.row2.Y, Gfx.View.row2.Z, 0.0f,
+		Gfx.View.row3.X, Gfx.View.row3.Y, Gfx.View.row3.Z, 0.0f,
+		0.0f,            0.0f,            0.0f,            1.0f
+	};
+	Matrix_MulBy(&m, &view_rot);
 
 	Gfx_LoadMatrix(MATRIX_VIEW, &m);
 	Gfx_BindVb(skybox_vb);
