@@ -263,8 +263,7 @@ cc_bool XR_Init( void ) {
         configViewCount = viewCount;
     }
 
-    // check requiremtnts
-    // TODO: min is opengl 4.3 for steamvr
+    // check requirements
     {
         XrGraphicsRequirementsOpenGLKHR requirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
 
@@ -585,8 +584,22 @@ void CopyXrMatrix4x4fToMatrix(struct Matrix *result, const XrMatrix4x4f *src) {
 }
 
 struct Matrix ConvertOpenXRPoseToMatrix(XrPosef pose, cc_bool position_invert) {
+    XrVector3f scale = {
+        LocalPlayer_Instance.Base.ModelScale.X,
+        LocalPlayer_Instance.Base.ModelScale.Y,
+        LocalPlayer_Instance.Base.ModelScale.Z
+    };
+
+    XrVector3f position = {
+        pose.position.x * scale.x,
+        pose.position.y * scale.y,
+        pose.position.z * scale.z
+    };
+
+    XrMatrix4x4f result_mx;
     XrMatrix4x4f result_m;
-    XrMatrix4x4f_CreateViewMatrix(&result_m, &pose.position, &pose.orientation);
+    XrMatrix4x4f_CreateTranslationRotationScale(&result_mx, &position, &pose.orientation, &scale);
+	XrMatrix4x4f_Invert(&result_m, &result_mx);
 
     struct Matrix result = Matrix_IdentityValue;
     CopyXrMatrix4x4fToMatrix(&result, &result_m);
@@ -786,6 +799,7 @@ cc_bool XR_GameInputTick(struct XRFrameContext* ctx, double delta) {
 
 
         Vec3 difference = Vec3_Create3(currPoseX-lastX, 0.0f, currPoseZ-lastZ);
+        Vec3_Mul3By(&difference, &LocalPlayer_Instance.Base.ModelScale);
 
         // no idea why we need inverse here
         Vec3_Transform(&difference, &difference, &yawOffsetInverseMatrix);
