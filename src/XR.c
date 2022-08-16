@@ -408,7 +408,7 @@ cc_bool XR_CreateSwapchains(void){
         createInfo.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
 
         swapchains[i].width = createInfo.width;
-        swapchains[i].height = createInfo.width;
+        swapchains[i].height = createInfo.height;
 
         CHK_XR(xrCreateSwapchain,
             xrCreateSwapchain(session, &createInfo, &swapchains[i].handle)
